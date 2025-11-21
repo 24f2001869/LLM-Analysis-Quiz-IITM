@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from typing import Optional, Any
 import uvicorn
 import json
-
+import gc
 from app.auth import auth_service
 from app.browser.browser_service import browser_service
 from app.llm.llm_service import llm_service
@@ -132,3 +132,4 @@ async def demo_endpoint(request: QuizRequest):
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
