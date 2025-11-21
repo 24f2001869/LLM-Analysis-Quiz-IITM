@@ -1,6 +1,7 @@
 from playwright.async_api import async_playwright
 import asyncio
 import base64
+import gc  # ADD THIS IMPORT
 from app.config import config
 
 class BrowserService:
@@ -8,6 +9,7 @@ class BrowserService:
         self.playwright = None
         self.browser = None
         self.context = None
+        self.active_pages = set()  # CRITICAL: Track pages for cleanup
     
     async def start(self):
         try:
@@ -16,14 +18,15 @@ class BrowserService:
                 headless=True,
                 args=[
                     '--no-sandbox',
-                    '--disable-dev-shm-usage',
+                    '--disable-dev-shm-usage',  # Prevents memory issues
                     '--disable-gpu',
                     '--disable-web-security',
-                    '--disable-features=VizDisplayCompositor',
-                    '--disable-background-timer-throttling',
-                    '--disable-backgrounding-occluded-windows',
-                    '--disable-renderer-backgrounding',
-                    '--single-process'
+                    '--single-process',  # Reduces memory usage
+                    '--no-zygote',
+                    '--no-first-run',
+                    '--disable-default-apps',
+                    '--disable-extensions',
+                    '--max_old_space_size=256'  # Limits memory
                 ]
             )
             self.context = await self.browser.new_context(
@@ -37,27 +40,42 @@ class BrowserService:
             return False
     
     async def close(self):
+        """Proper cleanup to prevent memory leaks"""
+        # Close all pages first
+        for page in list(self.active_pages):
+            try:
+                await page.close()
+            except:
+                pass
+        self.active_pages.clear()
+        
+        # Then close context and browser
         try:
             if self.context:
                 await self.context.close()
+                self.context = None
             if self.browser:
                 await self.browser.close()
+                self.browser = None
             if self.playwright:
                 await self.playwright.stop()
-        except:
-            pass
+                self.playwright = None
+        except Exception as e:
+            print(f"Browser cleanup error: {e}")
+        finally:
+            gc.collect()  # Force garbage collection
     
     async def cleanup_memory(self):
         """Force cleanup to prevent memory leaks"""
-        if hasattr(self, 'active_pages'):
-            for page in list(self.active_pages):
-                try:
-                    await page.close()
-                except:
-                    pass
-            self.active_pages.clear()
-        gc.collect()
-        
+        # Close any lingering pages
+        for page in list(self.active_pages):
+            try:
+                await page.close()
+            except:
+                pass
+        self.active_pages.clear()
+        gc.collect()  # Now gc is imported
+    
     async def get_page_content(self, url: str) -> dict:
         if not self.browser:
             return {
@@ -68,39 +86,31 @@ class BrowserService:
                 'status': 'browser_unavailable'
             }
         
-        page = await self.context.new_page()
+        page = None
         try:
-            # Set reasonable timeouts
-            page.set_default_timeout(30000)
-            page.set_default_navigation_timeout(30000)
+            page = await self.context.new_page()
+            self.active_pages.add(page)  # TRACK the page
             
-            # Navigate with retry
-            for attempt in range(2):
-                try:
-                    await page.goto(url, wait_until='domcontentloaded', timeout=20000)
-                    break
-                except Exception as e:
-                    if attempt == 1:
-                        raise e
-                    await asyncio.sleep(1)
+            # Reduced timeouts to prevent memory buildup
+            page.set_default_timeout(15000)  # Reduced from 30000
+            page.set_default_navigation_timeout(15000)
             
-            # Wait for content
+            # Single attempt navigation (reduced from 2 attempts)
+            await page.goto(url, wait_until='domcontentloaded', timeout=15000)
             await page.wait_for_load_state('networkidle')
-            await asyncio.sleep(1)
             
-            # Get content
+            # Get only essential content
             content = await page.content()
             text_content = await page.evaluate("() => document.body.innerText")
             
-            # Check for base64
+            # Limited base64 extraction (only first script)
             base64_content = ""
             try:
-                script_elements = await page.query_selector_all('script')
-                for element in script_elements:
-                    script_content = await element.inner_text()
+                script_element = await page.query_selector('script')
+                if script_element:
+                    script_content = await script_element.inner_text()
                     if 'atob(' in script_content:
                         base64_content = script_content
-                        break
             except:
                 pass
             
@@ -122,8 +132,13 @@ class BrowserService:
                 'error': str(e)
             }
         finally:
-            await page.close()
+            # CRITICAL: Always remove and close page
+            if page:
+                try:
+                    self.active_pages.discard(page)
+                    await page.close()
+                except:
+                    pass
+            gc.collect()  # Force cleanup after each request
 
 browser_service = BrowserService()
-
-
