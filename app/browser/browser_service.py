@@ -47,6 +47,16 @@ class BrowserService:
         except:
             pass
     
+    async def cleanup_memory(self):
+    """Force cleanup to prevent memory leaks"""
+    if hasattr(self, 'active_pages'):
+        for page in list(self.active_pages):
+            try:
+                await page.close()
+            except:
+                pass
+        self.active_pages.clear()
+    gc.collect()
     async def get_page_content(self, url: str) -> dict:
         if not self.browser:
             return {
@@ -114,3 +124,4 @@ class BrowserService:
             await page.close()
 
 browser_service = BrowserService()
+
