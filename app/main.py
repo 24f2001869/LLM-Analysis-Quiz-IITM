@@ -33,20 +33,37 @@ class PromptTestRequest(BaseModel):
     user_prompt: str
     code_word: str
 
-# Startup event
+# Browser service status
+browser_available = False
+
+# Startup event - WITH ERROR HANDLING
 @app.on_event("startup")
 async def startup_event():
-    await browser_service.start()
+    global browser_available
+    try:
+        await browser_service.start()
+        browser_available = True
+        print("✅ Browser service started successfully")
+    except Exception as e:
+        browser_available = False
+        print(f"⚠️ Browser service unavailable: {str(e)}")
+        print("🔄 Using fallback mode - API will work without browser automation")
 
 # Shutdown event  
 @app.on_event("shutdown")
 async def shutdown_event():
-    await browser_service.close()
+    if browser_available:
+        await browser_service.close()
 
 # Health check
 @app.get("/")
 async def root():
-    return {"status": "active", "service": "LLM Quiz Solver"}
+    return {
+        "status": "active", 
+        "service": "LLM Quiz Solver",
+        "browser_available": browser_available,
+        "message": "API is running" + (" with browser support" if browser_available else " in fallback mode")
+    }
 
 # Prompt testing endpoint
 @app.post("/test-prompts")
@@ -63,7 +80,8 @@ async def test_prompts(request: PromptTestRequest):
         return {
             "system_prompt_resistance": resistance_result,
             "user_prompt_effectiveness": effectiveness_result,
-            "code_word": request.code_word
+            "code_word": request.code_word,
+            "browser_available": browser_available
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Prompt testing error: {str(e)}")
@@ -83,16 +101,20 @@ async def solve_quiz(request: QuizRequest):
         return {
             "status": "success",
             "original_url": request.url,
-            "result": result
+            "result": result,
+            "browser_available": browser_available
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Quiz solving error: {str(e)}"
-        )
+        # Return error but don't crash
+        return {
+            "status": "error",
+            "error": str(e),
+            "browser_available": browser_available,
+            "message": "Quiz solving failed but API is responsive"
+        }
 
 # Test endpoint for demo
 @app.post("/demo")
@@ -104,7 +126,8 @@ async def demo_endpoint(request: QuizRequest):
         "status": "success",
         "message": "Demo endpoint working",
         "email": request.email,
-        "url": request.url
+        "url": request.url,
+        "browser_available": browser_available
     }
 
 if __name__ == "__main__":
