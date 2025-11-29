@@ -11,6 +11,10 @@ from app.llm.llm_service import llm_service
 from app.solvers.quiz_solver import quiz_solver
 from app.config import config
 
+from fastapi import FastAPI
+import psutil
+import os
+
 app = FastAPI(title="LLM Quiz Solver", version="1.0.0")
 
 # CORS middleware
@@ -35,6 +39,35 @@ class PromptTestRequest(BaseModel):
 
 # Browser service status
 browser_available = False
+
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    process = psutil.Process(os.getpid())
+    return {
+        "status": "healthy",
+        "memory_mb": process.memory_info().rss / 1024 / 1024,
+        "browser_available": browser_available
+    }
+
+@app.get("/patterns")
+async def list_patterns():
+    """List available quiz patterns"""
+    return {
+        "patterns": [
+            "UV HTTP GET commands",
+            "Git operations", 
+            "Markdown linking",
+            "Audio transcription",
+            "Image color analysis",
+            "CSV data processing",
+            "GitHub API integration",
+            "PDF invoice processing",
+            "Chart type selection",
+            "GitHub Actions cache"
+        ]
+    }
 
 # Startup event - WITH ERROR HANDLING
 @app.on_event("startup")
@@ -132,4 +165,5 @@ async def demo_endpoint(request: QuizRequest):
 
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
 
