@@ -23,4 +23,10 @@ class Config:
     HEADLESS = True
     BROWSER_TIMEOUT = 30000
 
+    MAX_MEMORY_MB = 512
+
+    # Evaluation server
+    EVALUATION_SERVER = "https://tds-llm-analysis.s-anand.net/submit"
+
+
 config = Config()
