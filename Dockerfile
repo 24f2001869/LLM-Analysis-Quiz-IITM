@@ -36,4 +36,9 @@ COPY tests/ ./tests/
 
 EXPOSE 8000
 
+# Set memory limits
+ENV PYTHONUNBUFFERED=1
+ENV NODE_OPTIONS="--max-old-space-size=256"
+
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
