@@ -163,7 +163,27 @@ async def demo_endpoint(request: QuizRequest):
         "browser_available": browser_available
     }
 
+from fastapi.responses import JSONResponse
+
+
+@app.head("/quiz")
+async def quiz_head():
+    # Evaluator sends HEAD before POST
+    return JSONResponse(status_code=200, content={})
+
+
+@app.post("/quiz")
+async def quiz_endpoint(request: QuizRequest):
+    """
+    REQUIRED BY IITM EVALUATOR
+    This is just a proxy to /solve-quiz
+    """
+    return await solve_quiz(request)
+
+
+
 if __name__ == "__main__":
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+
 
 
